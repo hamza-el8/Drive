@@ -1,14 +1,21 @@
-import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import { createSlice, PayloadAction, createAsyncThunk } from '@reduxjs/toolkit';
+import apiService from '@/services/api';
 
 export interface User {
-  id: string;
+  _id: string;
   name: string;
   email: string;
   avatar?: string;
+  bio?: string;
+  status?: string;
+  privacy?: string;
+  lastLogin?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface SavedAccount {
-  id: string;
+  _id: string;
   name: string;
   email: string;
   avatar?: string;
@@ -20,73 +27,211 @@ interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
   savedAccounts: SavedAccount[];
+  loading: boolean;
+  error: string | null;
 }
 
-const savedUser = localStorage.getItem('drive_user');
-const savedAccounts = localStorage.getItem('drive_saved_accounts');
+// Async thunks pour les opérations API
+export const loginUser = createAsyncThunk(
+  'auth/login',
+  async (credentials: { email: string; password: string; remember?: boolean }, { rejectWithValue }) => {
+    try {
+      const response = await apiService.login(credentials);
+      return response;
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+export const registerUser = createAsyncThunk(
+  'auth/register',
+  async (userData: { name: string; email: string; password: string }, { rejectWithValue }) => {
+    try {
+      const response = await apiService.register(userData);
+      return response;
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+export const verifyToken = createAsyncThunk(
+  'auth/verifyToken',
+  async (_, { rejectWithValue }) => {
+    try {
+      const isValid = await apiService.verifyToken();
+      if (isValid) {
+        const response = await apiService.getProfile();
+        return response;
+      }
+      return null;
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+export const updateProfile = createAsyncThunk(
+  'auth/updateProfile',
+  async (profileData: Partial<User>, { rejectWithValue }) => {
+    try {
+      const response = await apiService.updateProfile(profileData);
+      return response;
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+export const logoutUser = createAsyncThunk(
+  'auth/logout',
+  async (_, { rejectWithValue }) => {
+    try {
+      await apiService.logout();
+      return true;
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+export const deleteAccount = createAsyncThunk(
+  'auth/deleteAccount',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await apiService.deleteAccount();
+      return response;
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
 
 const initialState: AuthState = {
-  user: savedUser ? JSON.parse(savedUser) : null,
-  isAuthenticated: !!savedUser,
-  savedAccounts: savedAccounts ? JSON.parse(savedAccounts) : [],
-};
-
-const persistSavedAccounts = (accounts: SavedAccount[]) => {
-  localStorage.setItem('drive_saved_accounts', JSON.stringify(accounts));
+  user: null,
+  isAuthenticated: false,
+  savedAccounts: apiService.getRecentAccounts(),
+  loading: false,
+  error: null,
 };
 
 const authSlice = createSlice({
   name: 'auth',
   initialState,
   reducers: {
-    login(state, action: PayloadAction<User>) {
-      state.user = action.payload;
-      state.isAuthenticated = true;
-      localStorage.setItem('drive_user', JSON.stringify(action.payload));
-      const existingAccounts = state.savedAccounts;
-      const newAccount: SavedAccount = {
-        id: action.payload.id,
-        name: action.payload.name,
-        email: action.payload.email,
-        avatar: action.payload.avatar,
-        lastLogin: new Date().toISOString(),
-      };
-      const updatedAccounts = [...existingAccounts, newAccount];
-      state.savedAccounts = updatedAccounts;
-      persistSavedAccounts(updatedAccounts);
+    clearError(state) {
+      state.error = null;
     },
-    logout(state) {
-      state.user = null;
-      state.isAuthenticated = false;
-      localStorage.removeItem('drive_user');
-    },
-    updateProfile(state, action: PayloadAction<Partial<User>>) {
-      if (state.user) {
-        state.user = { ...state.user, ...action.payload };
-        localStorage.setItem('drive_user', JSON.stringify(state.user));
-      }
-    },
-    saveAccount(state, action: PayloadAction<SavedAccount>) {
-      const existingIndex = state.savedAccounts.findIndex(acc => acc.email === action.payload.email);
-      if (existingIndex >= 0) {
-        state.savedAccounts[existingIndex] = action.payload;
-      } else {
-        state.savedAccounts.push(action.payload);
-      }
-      persistSavedAccounts(state.savedAccounts);
-    },
-    removeAccount(state, action: PayloadAction<string>) {
+    removeSavedAccount(state, action: PayloadAction<string>) {
       state.savedAccounts = state.savedAccounts.filter(acc => acc.email !== action.payload);
-      persistSavedAccounts(state.savedAccounts);
+      apiService.removeRecentAccount(action.payload);
     },
-    deleteAccount(state) {
-      state.user = null;
-      state.isAuthenticated = false;
-      localStorage.removeItem('drive_user');
-      localStorage.removeItem('drive_files');
-    },
+  },
+  extraReducers: (builder) => {
+    // Login
+    builder
+      .addCase(loginUser.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(loginUser.fulfilled, (state, action) => {
+        state.loading = false;
+        state.user = action.payload.user;
+        state.isAuthenticated = true;
+        state.savedAccounts = apiService.getRecentAccounts();
+      })
+      .addCase(loginUser.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      });
+
+    // Register
+    builder
+      .addCase(registerUser.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(registerUser.fulfilled, (state, action) => {
+        state.loading = false;
+        state.user = action.payload.user;
+        state.isAuthenticated = true;
+        state.savedAccounts = apiService.getRecentAccounts();
+      })
+      .addCase(registerUser.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      });
+
+    // Verify token
+    builder
+      .addCase(verifyToken.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(verifyToken.fulfilled, (state, action) => {
+        state.loading = false;
+        if (action.payload) {
+          state.user = action.payload.user;
+          state.isAuthenticated = true;
+        } else {
+          state.user = null;
+          state.isAuthenticated = false;
+        }
+      })
+      .addCase(verifyToken.rejected, (state, action) => {
+        state.loading = false;
+        state.user = null;
+        state.isAuthenticated = false;
+        state.error = action.payload as string;
+      });
+
+    // Update profile
+    builder
+      .addCase(updateProfile.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(updateProfile.fulfilled, (state, action) => {
+        state.loading = false;
+        state.user = action.payload.user;
+        state.savedAccounts = apiService.getRecentAccounts();
+      })
+      .addCase(updateProfile.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      });
+
+    // Logout
+    builder
+      .addCase(logoutUser.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(logoutUser.fulfilled, (state) => {
+        state.loading = false;
+        state.user = null;
+        state.isAuthenticated = false;
+      })
+      .addCase(logoutUser.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      });
+
+    // Delete account
+    builder
+      .addCase(deleteAccount.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(deleteAccount.fulfilled, (state) => {
+        state.loading = false;
+        state.user = null;
+        state.isAuthenticated = false;
+      })
+      .addCase(deleteAccount.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      });
   },
 });
 
-export const { login, logout, updateProfile, deleteAccount, saveAccount, removeAccount } = authSlice.actions;
+export const { clearError, removeSavedAccount } = authSlice.actions;
 export default authSlice.reducer;

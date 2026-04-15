@@ -1,6 +1,6 @@
 import { X, Download, ZoomIn, ZoomOut, RotateCw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { FileItem } from '@/redux/filesSlice';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface Props {
   file: FileItem;
@@ -10,9 +10,34 @@ interface Props {
 const FilePreviewModal = ({ file, onClose }: Props) => {
   const [zoom, setZoom] = useState(100);
   const [rotation, setRotation] = useState(0);
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
 
   const isImage = file.mimeType?.startsWith('image/');
   const isPdf = file.mimeType?.includes('pdf');
+
+  useEffect(() => {
+    if (isPdf && file.dataUrl) {
+      // Convert data URL to blob URL for better PDF rendering
+      try {
+        const base64Data = file.dataUrl.split(',')[1];
+        const binaryData = atob(base64Data);
+        const arrayBuffer = new ArrayBuffer(binaryData.length);
+        const uint8Array = new Uint8Array(arrayBuffer);
+        for (let i = 0; i < binaryData.length; i++) {
+          uint8Array[i] = binaryData.charCodeAt(i);
+        }
+        const blob = new Blob([uint8Array], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        setPdfBlobUrl(url);
+        
+        return () => {
+          URL.revokeObjectURL(url);
+        };
+      } catch (error) {
+        console.error('Error converting PDF data URL to blob:', error);
+      }
+    }
+  }, [isPdf, file.dataUrl]);
 
   const handleDownload = () => {
     if (file.dataUrl) {
@@ -54,12 +79,19 @@ const FilePreviewModal = ({ file, onClose }: Props) => {
               transform: `scale(${zoom / 100}) rotate(${rotation}deg)`,
             }}
           />
-        ) : isPdf && file.dataUrl ? (
+        ) : isPdf && pdfBlobUrl ? (
           <iframe
-            src={file.dataUrl}
+            src={pdfBlobUrl}
             className="w-full h-full rounded-lg bg-white"
             title={file.name}
           />
+        ) : isPdf && file.dataUrl ? (
+          <div className="w-full h-full flex items-center justify-center">
+            <div className="text-center text-white/50">
+              <p className="text-lg mb-2">Chargement du PDF...</p>
+              <p className="text-sm">Veuillez patienter</p>
+            </div>
+          </div>
         ) : (
           <div className="text-center text-white/50">
             <p className="text-lg mb-2">Aperçu non disponible</p>

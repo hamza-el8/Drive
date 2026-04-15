@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { Link, useNavigate } from 'react-router-dom';
-import { login } from '@/redux/authSlice';
-import { Cloud, Mail, Lock, Eye, EyeOff, Rocket } from 'lucide-react';
+import { login, removeAccount } from '@/redux/authSlice';
+import { RootState } from '@/redux/store';
+import { Cloud, Mail, Lock, Eye, EyeOff, Rocket, Clock, Trash2, User } from 'lucide-react';
 
 const LoginPage = () => {
   const [email, setEmail] = useState('');
@@ -10,8 +11,10 @@ const LoginPage = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(false);
   const [error, setError] = useState('');
+  const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const savedAccounts = useSelector((s: RootState) => s.auth.savedAccounts);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,6 +24,22 @@ const LoginPage = () => {
     if (!user) { setError('Email ou mot de passe incorrect'); return; }
     dispatch(login({ id: user.id, name: user.name, email: user.email, avatar: user.avatar }));
     navigate('/');
+  };
+
+  const handleQuickLogin = (accountEmail: string) => {
+    setSelectedAccount(accountEmail);
+    setEmail(accountEmail);
+    setPassword(''); // Clear password for security
+    setError('');
+  };
+
+  const handleRemoveAccount = (accountEmail: string) => {
+    dispatch(removeAccount(accountEmail));
+    if (selectedAccount === accountEmail) {
+      setSelectedAccount(null);
+      setEmail('');
+      setPassword('');
+    }
   };
 
   const handleDemo = () => {
@@ -45,6 +64,50 @@ const LoginPage = () => {
             <h1 className="text-xl font-bold text-white">Bienvenue</h1>
             <p className="text-white/50 text-sm mt-1">Connectez-vous à CloudDrive</p>
           </div>
+
+          {/* Saved Accounts */}
+          {savedAccounts.length > 0 && (
+            <div className="mb-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Clock className="w-4 h-4 text-white/50" />
+                <span className="text-sm text-white/50">Comptes récents</span>
+              </div>
+              <div className="space-y-2">
+                {savedAccounts.map((account) => (
+                  <div
+                    key={account.email}
+                    className={`flex items-center gap-3 p-3 rounded-lg border transition-all cursor-pointer ${
+                      selectedAccount === account.email
+                        ? 'border-primary/50 bg-primary/10'
+                        : 'border-white/10 bg-white/5 hover:bg-white/10'
+                    }`}
+                    onClick={() => handleQuickLogin(account.email)}
+                  >
+                    <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
+                      {account.avatar ? (
+                        <img src={account.avatar} alt={account.name} className="w-full h-full rounded-full object-cover" />
+                      ) : (
+                        <User className="w-4 h-4 text-primary" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-white truncate">{account.name}</p>
+                      <p className="text-xs text-white/50 truncate">{account.email}</p>
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRemoveAccount(account.email);
+                      }}
+                      className="p-1.5 rounded-lg hover:bg-white/10 text-white/50 hover:text-white transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (

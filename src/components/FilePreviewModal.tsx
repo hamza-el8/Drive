@@ -11,21 +11,33 @@ const FilePreviewModal = ({ file, onClose }: Props) => {
   const [zoom, setZoom] = useState(100);
   const [rotation, setRotation] = useState(0);
   const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
+  const [pdfError, setPdfError] = useState(false);
 
   const isImage = file.mimeType?.startsWith('image/');
   const isPdf = file.mimeType?.includes('pdf');
 
   useEffect(() => {
     if (isPdf && file.dataUrl) {
+      setPdfError(false);
       // Convert data URL to blob URL for better PDF rendering
       try {
-        const base64Data = file.dataUrl.split(',')[1];
+        // Handle different data URL formats
+        let base64Data = file.dataUrl;
+        if (base64Data.includes(',')) {
+          base64Data = base64Data.split(',')[1];
+        }
+        
+        // Decode base64
         const binaryData = atob(base64Data);
         const arrayBuffer = new ArrayBuffer(binaryData.length);
         const uint8Array = new Uint8Array(arrayBuffer);
+        
+        // Convert string to Uint8Array
         for (let i = 0; i < binaryData.length; i++) {
           uint8Array[i] = binaryData.charCodeAt(i);
         }
+        
+        // Create blob and URL
         const blob = new Blob([uint8Array], { type: 'application/pdf' });
         const url = URL.createObjectURL(blob);
         setPdfBlobUrl(url);
@@ -35,6 +47,7 @@ const FilePreviewModal = ({ file, onClose }: Props) => {
         };
       } catch (error) {
         console.error('Error converting PDF data URL to blob:', error);
+        setPdfError(true);
       }
     }
   }, [isPdf, file.dataUrl]);
@@ -84,7 +97,23 @@ const FilePreviewModal = ({ file, onClose }: Props) => {
             src={pdfBlobUrl}
             className="w-full h-full rounded-lg bg-white"
             title={file.name}
+            onLoad={() => setPdfError(false)}
+            onError={() => setPdfError(true)}
           />
+        ) : isPdf && pdfError ? (
+          <div className="w-full h-full flex flex-col items-center justify-center p-8">
+            <div className="text-center text-white/50">
+              <p className="text-lg mb-2">Impossible d'afficher le PDF</p>
+              <p className="text-sm mb-4">Le lecteur PDF n'est pas disponible</p>
+              <button
+                onClick={handleDownload}
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity flex items-center gap-2 mx-auto"
+              >
+                <Download className="w-4 h-4" />
+                Télécharger le PDF
+              </button>
+            </div>
+          </div>
         ) : isPdf && file.dataUrl ? (
           <div className="w-full h-full flex items-center justify-center">
             <div className="text-center text-white/50">
@@ -100,31 +129,48 @@ const FilePreviewModal = ({ file, onClose }: Props) => {
         )}
       </div>
 
-      {/* Bottom controls for images */}
-      {isImage && (
+      {/* Bottom controls */}
+      {(isImage || isPdf) && (
         <div className="flex items-center justify-center gap-1 py-3 bg-black/50 border-t border-white/10">
-          <button
-            onClick={() => setZoom(z => Math.max(25, z - 25))}
-            className="p-2 rounded-lg hover:bg-white/10 text-white/70 hover:text-white transition-colors"
-          >
-            <ZoomOut className="w-5 h-5" />
-          </button>
-          <span className="text-white/60 text-sm w-16 text-center">{zoom}%</span>
-          <button
-            onClick={() => setZoom(z => Math.min(300, z + 25))}
-            className="p-2 rounded-lg hover:bg-white/10 text-white/70 hover:text-white transition-colors"
-          >
-            <ZoomIn className="w-5 h-5" />
-          </button>
-          <div className="w-px h-5 bg-white/20 mx-2" />
-          <button
-            onClick={() => setRotation(r => r + 90)}
-            className="p-2 rounded-lg hover:bg-white/10 text-white/70 hover:text-white transition-colors"
-          >
-            <RotateCw className="w-5 h-5" />
-          </button>
-          <div className="w-px h-5 bg-white/20 mx-2" />
-          <span className="text-white/40 text-xs">R</span>
+          {isImage && (
+            <>
+              <button
+                onClick={() => setZoom(z => Math.max(25, z - 25))}
+                className="p-2 rounded-lg hover:bg-white/10 text-white/70 hover:text-white transition-colors"
+              >
+                <ZoomOut className="w-5 h-5" />
+              </button>
+              <span className="text-white/60 text-sm w-16 text-center">{zoom}%</span>
+              <button
+                onClick={() => setZoom(z => Math.min(300, z + 25))}
+                className="p-2 rounded-lg hover:bg-white/10 text-white/70 hover:text-white transition-colors"
+              >
+                <ZoomIn className="w-5 h-5" />
+              </button>
+              <div className="w-px h-5 bg-white/20 mx-2" />
+              <button
+                onClick={() => setRotation(r => r + 90)}
+                className="p-2 rounded-lg hover:bg-white/10 text-white/70 hover:text-white transition-colors"
+              >
+                <RotateCw className="w-5 h-5" />
+              </button>
+              <div className="w-px h-5 bg-white/20 mx-2" />
+              <span className="text-white/40 text-xs">R</span>
+            </>
+          )}
+          {isPdf && (
+            <>
+              <button
+                onClick={handleDownload}
+                className="px-3 py-1.5 rounded-lg bg-primary/20 text-primary hover:bg-primary/30 transition-colors flex items-center gap-2 text-sm"
+              >
+                <Download className="w-4 h-4" />
+                Télécharger
+              </button>
+              <div className="w-px h-5 bg-white/20 mx-2" />
+              <span className="text-white/40 text-xs">PDF</span>
+            </>
+          )}
         </div>
       )}
     </div>
